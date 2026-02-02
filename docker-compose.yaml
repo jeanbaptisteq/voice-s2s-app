@@ -1,6 +1,8 @@
 services:
   s2s-app:
     build: .
+    ports:
+      - "8081:3030"
     expose:
       - "3030"
     networks:
