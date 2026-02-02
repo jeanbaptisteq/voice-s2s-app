@@ -3,6 +3,8 @@ services:
     build: .
     expose:
       - "3030"
+    networks:
+      - web
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - REALTIME_MODEL=${REALTIME_MODEL}
@@ -11,8 +13,14 @@ services:
       - PORT=3030
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=root_default"
       - "traefik.http.routers.voice.rule=Host(`voice.aiunilearn.com`)"
       - "traefik.http.routers.voice.entrypoints=web,websecure"
       - "traefik.http.routers.voice.tls=true"
       - "traefik.http.services.voice.loadbalancer.server.port=3030"
     restart: unless-stopped
+
+networks:
+  web:
+    external: true
+    name: root_default
