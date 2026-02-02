@@ -15,8 +15,13 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=root_default"
       - "traefik.http.routers.voice.rule=Host(`voice.aiunilearn.com`)"
-      - "traefik.http.routers.voice.entrypoints=web,websecure"
+      - "traefik.http.routers.voice.entrypoints=websecure"
       - "traefik.http.routers.voice.tls=true"
+      - "traefik.http.routers.voice.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.voice.priority=1000"
+      - "traefik.http.routers.voice-http.rule=Host(`voice.aiunilearn.com`)"
+      - "traefik.http.routers.voice-http.entrypoints=web"
+      - "traefik.http.routers.voice-http.priority=1000"
       - "traefik.http.services.voice.loadbalancer.server.port=3030"
     restart: unless-stopped
 
