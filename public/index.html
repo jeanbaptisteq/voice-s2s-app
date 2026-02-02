@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>French S2S - Real Situations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient"></div>
+    <main class="app">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Oral French training for Portuguese speakers</p>
+          <h1>Enter the scene. Speak. Get instant feedback.</h1>
+          <p class="lead">
+            Choose a real situation, talk by voice with the AI, and save the
+            conversations for review.
+          </p>
+        </div>
+        <div class="status-card">
+          <div class="status-row">
+            <span class="dot" id="statusDot"></span>
+            <span id="statusText">Disconnected</span>
+          </div>
+          <p class="status-note" id="statusNote">
+            Click start to open the microphone and enter the role-play.
+          </p>
+          <div class="controls">
+            <button class="primary" id="startBtn">Start</button>
+            <button class="ghost" id="stopBtn" disabled>Stop</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="grid">
+        <aside class="panel situations">
+          <div class="panel-head">
+            <h2>Situations</h2>
+            <p>Pick where you want to speak today.</p>
+          </div>
+          <div id="situationsList" class="cards"></div>
+        </aside>
+
+        <section class="panel stage">
+          <div class="panel-head">
+            <h2 id="stageTitle">Scene</h2>
+            <p id="stageSubtitle">Select a situation to begin.</p>
+          </div>
+
+          <div class="scene">
+            <div class="scene-info">
+              <div>
+                <span class="label">Ambience</span>
+                <p id="sceneAmbience">-</p>
+              </div>
+              <div>
+                <span class="label">Accent</span>
+                <p id="sceneAccent">-</p>
+              </div>
+            </div>
+            <textarea
+              id="promptEditor"
+              class="hidden"
+              placeholder="Edit the situation prompt here..."
+              rows="5"
+            ></textarea>
+            <div class="scene-actions hidden">
+              <button class="ghost" id="savePromptBtn">Save prompt</button>
+              <button class="ghost" id="resetPromptBtn">Restore original</button>
+            </div>
+          </div>
+
+          <div class="conversation" id="conversationLog">
+            <div class="message system">
+              Select a situation and start to talk by voice.
+            </div>
+          </div>
+
+          <div class="composer">
+            <input
+              id="textInput"
+              type="text"
+              placeholder="Type a sentence for the AI (optional)"
+            />
+            <button id="sendTextBtn">Send</button>
+          </div>
+        </section>
+
+        <aside class="panel links">
+          <div class="panel-head">
+            <h2>Prompts</h2>
+            <p>Quick ideas to keep the dialog moving.</p>
+          </div>
+          <div id="linksList" class="chips"></div>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

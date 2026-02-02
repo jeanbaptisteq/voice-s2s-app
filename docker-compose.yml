@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  s2s-app:
+    build: .
+    ports:
+      - "80:3030"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REALTIME_MODEL=${REALTIME_MODEL}
+      - REALTIME_VOICE=${REALTIME_VOICE}
+      - REALTIME_TRANSCRIBE_MODEL=${REALTIME_TRANSCRIBE_MODEL}
+      - PORT=3030
+    restart: unless-stopped
