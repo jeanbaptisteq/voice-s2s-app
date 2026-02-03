@@ -36,6 +36,18 @@
             <button class="primary" id="startBtn">Start</button>
             <button class="ghost" id="stopBtn" disabled>Stop</button>
           </div>
+          <div class="auth-block">
+            <p class="auth-title">Sign in to track your daily limit</p>
+            <input
+              id="authEmail"
+              type="email"
+              placeholder="your@email.com"
+              autocomplete="email"
+            />
+            <button class="ghost" id="authSendLinkBtn">Send magic link</button>
+            <button class="ghost hidden" id="authSignOutBtn">Sign out</button>
+            <p class="auth-status" id="authStatus"></p>
+          </div>
         </div>
       </header>
 

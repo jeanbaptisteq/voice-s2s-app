@@ -24,8 +24,16 @@ const TRANSCRIBE_MODEL =
   process.env.REALTIME_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
 const PORT = process.env.PORT || 3030;
 const DAILY_LIMIT_SECONDS = Number(process.env.DAILY_LIMIT_SECONDS || 300);
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_URL =
+  process.env.SUPABASE_URL || process.env.SUPABASE_VOICEAPP_URL;
+const SUPABASE_SERVICE_ROLE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_VOICEAPP_SERVICE_ROLE_SECRET ||
+  process.env.SUPABASE_VOICEAPP_SECRET_KEY;
+const SUPABASE_ANON_KEY =
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_VOICEAPP_ANON_PUBLIC ||
+  process.env.SUPABASE_VOICEAPP_PUBLISHABLE_KEY;
 
 const supabase =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
@@ -71,6 +79,26 @@ function buildInstructions(situation, promptOverride) {
 
 function getUsageDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+async function requireAuthUser(req) {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) {
+    const error = new Error("Missing auth token.");
+    error.status = 401;
+    throw error;
+  }
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) {
+    const authError = new Error("Invalid auth token.");
+    authError.status = 401;
+    throw authError;
+  }
+  return data.user;
 }
 
 async function getUsage(userId) {
@@ -142,6 +170,14 @@ app.get("/api/situations", async (_req, res) => {
   }
 });
 
+app.get("/api/config", (_req, res) => {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    res.status(500).json({ error: "Missing Supabase public configuration." });
+    return;
+  }
+  res.json({ supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY });
+});
+
 app.put("/api/situations/:id", async (req, res) => {
   try {
     const { id } = req.params;
@@ -184,13 +220,10 @@ app.post("/api/session", async (req, res) => {
       return;
     }
 
-    const { situationId, promptOverride, userId } = req.body || {};
-    if (!userId) {
-      res.status(400).json({ error: "Missing userId." });
-      return;
-    }
+    const { situationId, promptOverride } = req.body || {};
+    const user = await requireAuthUser(req);
 
-    const usage = await getUsage(userId);
+    const usage = await getUsage(user.id);
     const remainingSeconds = Math.max(
       DAILY_LIMIT_SECONDS - usage.usedSeconds,
       0
@@ -240,7 +273,10 @@ app.post("/api/session", async (req, res) => {
       remainingSeconds,
     });
   } catch (error) {
-    res.status(500).json({ error: "Failed to create realtime session." });
+    const status = error.status || 500;
+    res
+      .status(status)
+      .json({ error: error.message || "Failed to create realtime session." });
   }
 });
 
@@ -251,13 +287,14 @@ app.post("/api/usage/ping", async (req, res) => {
       return;
     }
 
-    const { userId, seconds } = req.body || {};
-    if (!userId || typeof seconds !== "number" || seconds <= 0) {
+    const { seconds } = req.body || {};
+    if (typeof seconds !== "number" || seconds <= 0) {
       res.status(400).json({ error: "Invalid usage payload." });
       return;
     }
 
-    const usage = await incrementUsage(userId, Math.floor(seconds));
+    const user = await requireAuthUser(req);
+    const usage = await incrementUsage(user.id, Math.floor(seconds));
     const remainingSeconds = Math.max(
       DAILY_LIMIT_SECONDS - usage.usedSeconds,
       0
@@ -268,7 +305,8 @@ app.post("/api/usage/ping", async (req, res) => {
       remainingSeconds,
     });
   } catch (error) {
-    res.status(500).json({ error: "Failed to update usage." });
+    const status = error.status || 500;
+    res.status(status).json({ error: error.message || "Failed to update usage." });
   }
 });
 

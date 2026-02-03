@@ -1,3 +1,5 @@
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
 const statusDot = document.getElementById("statusDot");
 const statusText = document.getElementById("statusText");
 const statusNote = document.getElementById("statusNote");
@@ -15,6 +17,10 @@ const resetPromptBtn = document.getElementById("resetPromptBtn");
 const conversationLog = document.getElementById("conversationLog");
 const textInput = document.getElementById("textInput");
 const sendTextBtn = document.getElementById("sendTextBtn");
+const authEmail = document.getElementById("authEmail");
+const authSendLinkBtn = document.getElementById("authSendLinkBtn");
+const authSignOutBtn = document.getElementById("authSignOutBtn");
+const authStatus = document.getElementById("authStatus");
 
 const state = {
   situations: [],
@@ -26,6 +32,8 @@ const state = {
   pendingEvents: [],
   assistantBuffer: "",
   userId: null,
+  accessToken: null,
+  supabase: null,
   usageTimer: null,
   remainingSeconds: null,
 };
@@ -48,22 +56,35 @@ function clearConversation() {
   conversationLog.innerHTML = "";
 }
 
-function ensureUserId() {
-  const existing = localStorage.getItem("voice_user_id");
-  if (existing) {
-    state.userId = existing;
-    return;
-  }
-  const generated = crypto.randomUUID();
-  localStorage.setItem("voice_user_id", generated);
-  state.userId = generated;
-}
-
 function formatRemaining(seconds) {
   if (seconds === null || seconds === undefined) return "";
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins}m${secs.toString().padStart(2, "0")}s restantes`;
+}
+
+function setAuthStatus(message) {
+  authStatus.textContent = message || "";
+}
+
+function updateAuthUI(session) {
+  if (session?.user) {
+    state.userId = session.user.id;
+    state.accessToken = session.access_token;
+    authSendLinkBtn.classList.add("hidden");
+    authSignOutBtn.classList.remove("hidden");
+    authEmail.disabled = true;
+    setAuthStatus(`Connecté: ${session.user.email || "utilisateur"}`);
+    startBtn.disabled = false;
+  } else {
+    state.userId = null;
+    state.accessToken = null;
+    authSendLinkBtn.classList.remove("hidden");
+    authSignOutBtn.classList.add("hidden");
+    authEmail.disabled = false;
+    setAuthStatus("Connectez-vous pour activer la limite quotidienne.");
+    startBtn.disabled = true;
+  }
 }
 
 function renderSituations() {
@@ -178,6 +199,10 @@ async function startSession() {
     addMessage("Choose a situation before starting.", "system");
     return;
   }
+  if (!state.userId || !state.accessToken) {
+    addMessage("Please sign in before starting.", "system");
+    return;
+  }
 
   startBtn.disabled = true;
   stopBtn.disabled = false;
@@ -187,14 +212,16 @@ async function startSession() {
     setStatus(false, "Requesting session...");
     const response = await fetch("/api/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.accessToken}`,
+      },
       body: JSON.stringify({
         situationId: state.activeSituation.id,
         promptOverride:
           promptEditor.value.trim() === state.activeSituation.prompt
             ? ""
             : promptEditor.value.trim(),
-        userId: state.userId,
       }),
     });
 
@@ -330,12 +357,15 @@ function updateAssistantBuffer() {
 }
 
 async function sendUsagePing(seconds) {
-  if (!state.userId) return;
+  if (!state.userId || !state.accessToken) return;
   try {
     const response = await fetch("/api/usage/ping", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: state.userId, seconds }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+      body: JSON.stringify({ seconds }),
     });
 
     if (!response.ok) return;
@@ -419,6 +449,65 @@ function stopSession() {
   flushLogs();
 }
 
+async function initSupabase() {
+  try {
+    const response = await fetch("/api/config");
+    if (!response.ok) {
+      throw new Error("Missing Supabase public config.");
+    }
+    const { supabaseUrl, supabaseAnonKey } = await response.json();
+    state.supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    });
+
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+    if (code) {
+      const { error } = await state.supabase.auth.exchangeCodeForSession(code);
+      if (error) {
+        setAuthStatus("Lien invalide ou expiré.");
+      }
+      url.searchParams.delete("code");
+      window.history.replaceState({}, "", url.toString());
+    }
+
+    const { data } = await state.supabase.auth.getSession();
+    updateAuthUI(data.session);
+    state.supabase.auth.onAuthStateChange((_event, session) => {
+      updateAuthUI(session);
+    });
+  } catch (error) {
+    setAuthStatus("Supabase non configuré.");
+    startBtn.disabled = true;
+    console.error(error);
+  }
+}
+
+async function sendMagicLink() {
+  if (!state.supabase) return;
+  const email = authEmail.value.trim();
+  if (!email) {
+    setAuthStatus("Ajoute un email valide.");
+    return;
+  }
+  setAuthStatus("Envoi du lien magique...");
+  const { error } = await state.supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  if (error) {
+    setAuthStatus("Erreur: impossible d'envoyer le lien.");
+    return;
+  }
+  setAuthStatus("Lien envoyé. Vérifie ta boîte mail.");
+}
+
+async function signOut() {
+  if (!state.supabase) return;
+  await state.supabase.auth.signOut();
+  updateAuthUI(null);
+}
+
 startBtn.addEventListener("click", startSession);
 stopBtn.addEventListener("click", stopSession);
 
@@ -433,5 +522,9 @@ textInput.addEventListener("keydown", (event) => {
 });
 
 loadSituations();
-ensureUserId();
+startBtn.disabled = true;
+initSupabase();
 setStatus(false, "Choose a situation and click start.");
+
+authSendLinkBtn.addEventListener("click", sendMagicLink);
+authSignOutBtn.addEventListener("click", signOut);
