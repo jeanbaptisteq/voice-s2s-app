@@ -60,6 +60,36 @@
     ]
   },
   {
+    "id": "hotel-checkin",
+    "title": "A l'hôtel",
+    "theme": "Réservation, check-in, services",
+    "accent": "Réception",
+    "ambience": "Hall d'hôtel, valises, cloche, ascenseur",
+    "prompt": "Tu es réceptionniste d'un hôtel. L'apprenant arrive pour un check-in, demande des informations sur la réservation, la chambre et les services. Pose des questions simples (nom, dates, petit-déjeuner, caution), propose des options, et corrige doucement en portugais. Encourage l'apprenant à parler à voix haute.",
+    "links": [
+      "Dis que tu as une réservation au nom de Silva.",
+      "Demande si le petit-déjeuner est inclus.",
+      "Dis que tu arrives un peu tôt.",
+      "Demande une chambre au calme.",
+      "Demande à quelle heure est le check-out.",
+      "Dis que tu as deux valises.",
+      "Demande s'il y a un ascenseur.",
+      "Demande le mot de passe du Wi-Fi.",
+      "Dis que tu veux un lit double.",
+      "Demande si la taxe de séjour est incluse.",
+      "Dis que tu restes trois nuits.",
+      "Demande si l'hôtel a une salle de sport.",
+      "Demande où est le restaurant.",
+      "Dis que tu as besoin d'un adaptateur.",
+      "Demande une facture pour le travail.",
+      "Dis que tu veux un réveil à 7h.",
+      "Demande si le parking est gratuit.",
+      "Dis que tu as une réservation modifiable.",
+      "Demande si on peut garder les bagages.",
+      "Remercie et souhaite une bonne soirée."
+    ]
+  },
+  {
     "id": "medecin-urgence",
     "title": "Chez le médecin",
     "theme": "Symptômes, diagnostic, conseils",
