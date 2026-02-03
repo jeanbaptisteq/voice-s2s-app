@@ -3,6 +3,7 @@ import express from "express";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,16 @@ const REALTIME_VOICE = process.env.REALTIME_VOICE || "alloy";
 const TRANSCRIBE_MODEL =
   process.env.REALTIME_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
 const PORT = process.env.PORT || 3030;
+const DAILY_LIMIT_SECONDS = Number(process.env.DAILY_LIMIT_SECONDS || 300);
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false },
+      })
+    : null;
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -56,6 +67,70 @@ function buildInstructions(situation, promptOverride) {
   }
 
   return blocks.join("\n\n");
+}
+
+function getUsageDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function getUsage(userId) {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+  const usageDate = getUsageDate();
+  const { data, error } = await supabase
+    .from("voice_usage")
+    .select("used_seconds")
+    .eq("user_id", userId)
+    .eq("usage_date", usageDate)
+    .single();
+
+  if (error && error.code !== "PGRST116") {
+    throw error;
+  }
+
+  return {
+    usageDate,
+    usedSeconds: data?.used_seconds ?? 0,
+  };
+}
+
+async function incrementUsage(userId, seconds) {
+  if (!supabase) {
+    throw new Error("Supabase is not configured.");
+  }
+  const usageDate = getUsageDate();
+  const { data, error } = await supabase
+    .from("voice_usage")
+    .select("used_seconds")
+    .eq("user_id", userId)
+    .eq("usage_date", usageDate)
+    .single();
+
+  if (error && error.code !== "PGRST116") {
+    throw error;
+  }
+
+  const current = data?.used_seconds ?? 0;
+  const next = Math.min(current + seconds, DAILY_LIMIT_SECONDS);
+
+  const { error: upsertError } = await supabase.from("voice_usage").upsert(
+    {
+      user_id: userId,
+      usage_date: usageDate,
+      used_seconds: next,
+    },
+    { onConflict: "user_id,usage_date" }
+  );
+
+  if (upsertError) {
+    throw upsertError;
+  }
+
+  return {
+    usageDate,
+    usedSeconds: next,
+  };
 }
 
 app.get("/api/situations", async (_req, res) => {
@@ -104,8 +179,27 @@ app.post("/api/session", async (req, res) => {
       res.status(400).json({ error: "Missing OPENAI_API_KEY in environment." });
       return;
     }
+    if (!supabase) {
+      res.status(500).json({ error: "Missing Supabase configuration." });
+      return;
+    }
 
-    const { situationId, promptOverride } = req.body || {};
+    const { situationId, promptOverride, userId } = req.body || {};
+    if (!userId) {
+      res.status(400).json({ error: "Missing userId." });
+      return;
+    }
+
+    const usage = await getUsage(userId);
+    const remainingSeconds = Math.max(
+      DAILY_LIMIT_SECONDS - usage.usedSeconds,
+      0
+    );
+    if (remainingSeconds <= 0) {
+      res.status(429).json({ error: "Daily limit reached." });
+      return;
+    }
+
     const situations = await readSituations();
     const situation = situations.find((item) => item.id === situationId);
 
@@ -143,9 +237,38 @@ app.post("/api/session", async (req, res) => {
       sessionId: session.id,
       clientSecret: session.client_secret?.value,
       model: REALTIME_MODEL,
+      remainingSeconds,
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to create realtime session." });
+  }
+});
+
+app.post("/api/usage/ping", async (req, res) => {
+  try {
+    if (!supabase) {
+      res.status(500).json({ error: "Missing Supabase configuration." });
+      return;
+    }
+
+    const { userId, seconds } = req.body || {};
+    if (!userId || typeof seconds !== "number" || seconds <= 0) {
+      res.status(400).json({ error: "Invalid usage payload." });
+      return;
+    }
+
+    const usage = await incrementUsage(userId, Math.floor(seconds));
+    const remainingSeconds = Math.max(
+      DAILY_LIMIT_SECONDS - usage.usedSeconds,
+      0
+    );
+
+    res.json({
+      usedSeconds: usage.usedSeconds,
+      remainingSeconds,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update usage." });
   }
 });
 

@@ -25,6 +25,9 @@ const state = {
   sessionId: null,
   pendingEvents: [],
   assistantBuffer: "",
+  userId: null,
+  usageTimer: null,
+  remainingSeconds: null,
 };
 
 function setStatus(connected, note) {
@@ -43,6 +46,24 @@ function addMessage(text, role = "assistant") {
 
 function clearConversation() {
   conversationLog.innerHTML = "";
+}
+
+function ensureUserId() {
+  const existing = localStorage.getItem("voice_user_id");
+  if (existing) {
+    state.userId = existing;
+    return;
+  }
+  const generated = crypto.randomUUID();
+  localStorage.setItem("voice_user_id", generated);
+  state.userId = generated;
+}
+
+function formatRemaining(seconds) {
+  if (seconds === null || seconds === undefined) return "";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}m${secs.toString().padStart(2, "0")}s restantes`;
 }
 
 function renderSituations() {
@@ -173,6 +194,7 @@ async function startSession() {
           promptEditor.value.trim() === state.activeSituation.prompt
             ? ""
             : promptEditor.value.trim(),
+        userId: state.userId,
       }),
     });
 
@@ -183,6 +205,10 @@ async function startSession() {
 
     const data = await response.json();
     state.sessionId = data.sessionId;
+    state.remainingSeconds = data.remainingSeconds ?? null;
+    if (state.remainingSeconds !== null) {
+      setStatus(false, formatRemaining(state.remainingSeconds));
+    }
 
     const pc = new RTCPeerConnection();
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -246,6 +272,7 @@ async function startSession() {
 
     state.connection = pc;
     state.dataChannel = dc;
+    startUsagePing();
 
     addMessage("Connection ready. You can speak.", "system");
   } catch (error) {
@@ -302,6 +329,44 @@ function updateAssistantBuffer() {
   conversationLog.scrollTop = conversationLog.scrollHeight;
 }
 
+async function sendUsagePing(seconds) {
+  if (!state.userId) return;
+  try {
+    const response = await fetch("/api/usage/ping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: state.userId, seconds }),
+    });
+
+    if (!response.ok) return;
+    const data = await response.json();
+    state.remainingSeconds = data.remainingSeconds ?? null;
+    if (state.remainingSeconds !== null) {
+      setStatus(true, formatRemaining(state.remainingSeconds));
+      if (state.remainingSeconds <= 0) {
+        addMessage("Limite quotidienne atteinte.", "system");
+        stopSession();
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function startUsagePing() {
+  clearUsagePing();
+  state.usageTimer = setInterval(() => {
+    sendUsagePing(10);
+  }, 10000);
+}
+
+function clearUsagePing() {
+  if (state.usageTimer) {
+    clearInterval(state.usageTimer);
+    state.usageTimer = null;
+  }
+}
+
 async function flushLogs() {
   if (!state.sessionId || state.pendingEvents.length === 0) return;
   const payload = {
@@ -347,6 +412,7 @@ function stopSession() {
   }
   state.connection = null;
   state.dataChannel = null;
+  clearUsagePing();
   startBtn.disabled = false;
   stopBtn.disabled = true;
   setStatus(false, "Sessao encerrada.");
@@ -367,4 +433,5 @@ textInput.addEventListener("keydown", (event) => {
 });
 
 loadSituations();
+ensureUserId();
 setStatus(false, "Choose a situation and click start.");
